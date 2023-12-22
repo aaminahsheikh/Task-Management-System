@@ -3,6 +3,7 @@ from django.http import HttpResponse
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework import status
+from django.shortcuts import get_object_or_404
 
 from task_home.serializer import UserSerializer, TaskSerializer
 from task_home.models import User, Task
@@ -42,29 +43,15 @@ class TaskViewSet(viewsets.ModelViewSet):
         return Response(self.serializer_class(self.queryset, many=True).data, status=status.HTTP_200_OK)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        created_by_uuid = request.data.get('created_by')
+        user = get_object_or_404(User, id=created_by_uuid)
 
-        user_id = serializer.validated_data.get('created_by')
-        user = User.objects.filter(id=user_id).first()
-        print("========", user)
-        if not user:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        task_data = request.data
+        task_data.update({'created_by': user.id})
+        serializer = TaskSerializer(data=task_data)
 
-        assigned_to_id = serializer.validated_data.get('assigned_to')
-        if not assigned_to_id:
-            user_id = user
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'message': 'Task created successfully'}, status=status.HTTP_201_CREATED)
         else:
-            user_id = User.objects.filter(id=assigned_to_id).first()
-        print(user_id, "==========")
-        task = Task.objects.create(
-            title=request.POST.get('title'),
-            description=request.POST.get('description'),
-            status=request.POST.get('status'),
-            due_date=request.POST.get('due_date'),
-            created_by=user,
-            assigned_to=user_id
-        )
-
-        return Response({'message': 'Task created successfully'}, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
